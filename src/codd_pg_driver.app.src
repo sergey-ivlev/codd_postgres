@@ -1,0 +1,12 @@
+{application, codd_pg_driver,
+ [
+  {description, "PostgreSQL driver for codd orm"},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { codd_pg_driver_app, []}},
+  {env, []}
+ ]}.
