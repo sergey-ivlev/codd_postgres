@@ -132,7 +132,7 @@ set_values([]) ->
 set_values(Map) when is_map(Map) andalso map_size(Map) =:= 0 ->
     {error, nothing_changed};
 set_values(Fields) ->
-    Result = join_and_with_count(Fields),
+    Result = join_comma_with_count(Fields),
     {ok, Result}.
 
 join_and_with_count(FV) ->
@@ -153,6 +153,23 @@ join_and_with_count(Count, FV) when is_list(FV) ->
     {NextCount, <<" AND ", TotalAcc/binary>>} = lists:foldl(Fun, {Count, <<"">>}, FV),
     {NextCount, TotalAcc}.
 
+join_comma_with_count(FV) ->
+    join_comma_with_count(1, FV).
+
+join_comma_with_count(Count, FV) when is_map(FV) ->
+    Fun = fun(K,_, {I, Acc}) ->
+        {I+1, <<Acc/binary, " , ", (atom_to_binary(K, latin1))/binary, " = $", (integer_to_binary(I))/binary>>}
+    end,
+    {NextCount, <<" , ", TotalAcc/binary>>} = maps:fold(Fun, {Count, <<"">>}, FV),
+    {NextCount, TotalAcc};
+
+join_comma_with_count(Count, FV) when is_list(FV) ->
+    Fun = fun({Module, K,_}, {I, Acc}) ->
+        Table = Module:db_table(),
+        {I+1, <<Acc/binary, " , ", (Table)/binary, ".", (atom_to_binary(K, latin1))/binary, " = $", (integer_to_binary(I))/binary>>}
+    end,
+    {NextCount, <<" , ", TotalAcc/binary>>} = lists:foldl(Fun, {Count, <<"">>}, FV),
+    {NextCount, TotalAcc}.
 
 typecast_args(Args) ->
     Fun = fun ({Module, Key, Value}, {Acc, Errors}) ->
