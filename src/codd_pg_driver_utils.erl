@@ -234,6 +234,7 @@ typecast(Value, Arg)  when
 
 typecast(Value, Arg) when
     Value =:= real;
+    Value =:= float;
     Value =:= float4;
     Value =:= float8 ->
     case Arg of
