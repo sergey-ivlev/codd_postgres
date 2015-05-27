@@ -11,7 +11,7 @@
 
 
 %% API
--export([typecast_args/1, typecast_args/2, typecast/3]).
+-export([typecast_args/1, typecast_args/2]).
 -export([primary_data/1, insert_data/1, insert_args/1, db_keys/1]).
 -export([join_and_with_count/1, join_and_with_count/2]).
 -export([where/1, where/2, set_values/1]).
@@ -173,7 +173,7 @@ join_comma_with_count(Count, FV) when is_list(FV) ->
 
 typecast_args(Args) ->
     Fun = fun ({Module, Key, Value}, {Acc, Errors}) ->
-        case typecast(Module, Key, Value) of
+        case codd_typecast:typecast(Module, Key, Value) of
             {ok, ValidValue} -> { [ValidValue | Acc], Errors};
             {error, Error} ->  {Acc, [{ Key, Value, Error} | Errors]}
         end
@@ -187,7 +187,7 @@ typecast_args(Args) ->
 
 typecast_args(Module, Args) ->
     Fun = fun (Key, Value, {Acc, Errors}) ->
-        case typecast(Module, Key, Value) of
+        case codd_typecast:typecast(Module, Key, Value) of
             {ok, ValidValue} -> { [ValidValue | Acc], Errors};
             {error, Error} ->  {Acc, [{ Key, Value, Error} | Errors]}
         end
@@ -197,105 +197,4 @@ typecast_args(Module, Args) ->
             {ok, lists:reverse(Acc)};
         {_, Errors} ->
             {error, Errors}
-    end.
-
-typecast(Module, Key, Value) ->
-    Type = Module:type(Key),
-    case codd_model:find_alias(Module, Key, Value) of
-        {ok, {SourceValue, _}} ->
-            typecast(Type, SourceValue);
-        Error ->
-            Error
-    end.
-
-typecast(_, null) ->
-    {ok, null};
-
-typecast(Value, Arg)  when
-    Value =:= smallint;
-    Value =:= int2;
-    Value =:= integer;
-    Value =:= int4;
-    Value =:= bigint;
-    Value =:= int8
-    ->
-    case Arg of
-        Bin when is_binary(Bin) ->
-            try
-                {ok, binary_to_integer(Bin)}
-            catch _:_ ->
-                {error, bad_arg}
-            end;
-        Int when is_integer(Int) ->
-            {ok, Int};
-        _ ->
-            {error, bad_arg}
-    end;
-
-typecast(Value, Arg) when
-    Value =:= real;
-    Value =:= float;
-    Value =:= float4;
-    Value =:= float8 ->
-    case Arg of
-        Bin when is_binary(Bin) ->
-            try
-                {ok, binary_to_integer(Bin)}
-            catch _:_ ->
-                try
-                    {ok, binary_to_float(Bin)}
-                catch _:_ ->
-                    {error, bad_arg}
-                end
-            end;
-        Int when is_integer(Int) ->
-            {ok, Int};
-        Float when is_float(Float) ->
-            {ok, Float};
-        _ ->
-            {error, bad_arg}
-    end;
-typecast(Value, Arg) when
-    Value =:= string;
-    Value =:= text;
-    Value =:= varchar;
-    Value =:= binary ->
-    case Arg of
-        Bin when is_binary(Bin) ->
-            {ok, Bin};
-        _ ->
-            {error, bad_arg}
-    end;
-typecast(date, Arg) ->
-    case Arg of
-        {_Y, _M, _D} ->
-            {ok, Arg};
-        _ ->
-            {error, bad_arg}
-    end;
-typecast(datetime, Arg) ->
-    case Arg of
-        {{_Y, _M, _D}, {_Hh, _Mm, _Ss}} ->
-            {ok, Arg};
-        _ ->
-            {error, bad_arg}
-    end;
-typecast(Value, Arg) when
-    Value =:= boolean;
-    Value =:= bool ->
-    case Arg of
-        true ->
-            {ok, true};
-        false ->
-            {ok, false};
-        _ ->
-            {error, bad_arg}
-    end;
-typecast(Value, Arg) when
-    Value =:= list ->
-    case Arg of
-        List when is_list(Arg) ->
-            {ok, List};
-        _ ->
-            {error, bad_arg}
     end.

@@ -8,6 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(codd_pg_driver_runtime).
 -author("isergey").
+
 -compile({parse_transform, do}).
 
 %% API
