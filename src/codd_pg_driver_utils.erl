@@ -172,11 +172,17 @@ join_comma_with_count(Count, FV) when is_list(FV) ->
     {NextCount, TotalAcc}.
 
 typecast_args(Args) ->
-    Fun = fun ({Module, Key, Value}, {Acc, Errors}) ->
-        case codd_typecast:typecast(Module, Key, Value) of
-            {ok, ValidValue} -> { [ValidValue | Acc], Errors};
-            {error, Error} ->  {Acc, [{ Key, Value, Error} | Errors]}
-        end
+    Fun = fun
+        ({Module, Key, Value}, {Acc, Errors}) ->
+            case codd_typecast:typecast(Module, Key, Value) of
+                {ok, ValidValue} -> { [ValidValue | Acc], Errors};
+                {error, Error} ->  {Acc, [{ Key, Value, Error} | Errors]}
+            end;
+        ({Type, Value}, {Acc, Errors}) ->
+            case codd_typecast:typecast(Type, Value) of
+                {ok, ValidValue} -> { [ValidValue | Acc], Errors};
+                {error, Error} ->  {Acc, [{ Type, Value, Error} | Errors]}
+            end
     end,
     case lists:foldl(Fun, {[], []}, Args) of
         {Acc, []} ->
