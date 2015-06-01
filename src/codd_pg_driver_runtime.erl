@@ -51,16 +51,7 @@ equery(Interface, Module, Sql, FV) ->
     case codd_pg_driver_utils:typecast_args(FV) of
         {ok, TypecastArgs} ->
             Result = ?MODULE:db_equery(Interface, Sql, TypecastArgs),
-            case result(Result, Module) of
-                {ok, []} ->
-                    {error, undefined};
-                {ok, [Data]} ->
-                    {ok, Data};
-                {ok, Data} ->
-                    {ok, Data};
-                {error, Reason} ->
-                    {error, Reason}
-            end;
+            result(Result, Module);
         {error, Reason} ->
             {error, Reason}
     end.
