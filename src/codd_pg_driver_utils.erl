@@ -99,12 +99,12 @@ opts(Opts) ->
 
 limit(N) when is_integer(N) ->
     {ok, <<" LIMIT ",(integer_to_binary(N))/binary>>};
-limit(N) ->
-    {error, codd_error:unvalid_error(limit, N)}.
+limit(_) ->
+    {error, codd_error:unvalid_error(limit)}.
 offset(N) when is_integer(N) ->
     {ok, <<" OFFSET ",(integer_to_binary(N))/binary>>};
-offset(N) ->
-    {error, codd_error:unvalid_error(offset, N)}.
+offset(_) ->
+    {error, codd_error:unvalid_error(offset)}.
 
 where(Fields) ->
     where(1, Fields).
@@ -172,16 +172,10 @@ join_comma_with_count(Count, FV) when is_list(FV) ->
     {NextCount, TotalAcc}.
 
 typecast_args(Args) ->
-    Fun = fun
-        ({Module, Key, Value}, {Acc, Errors}) ->
+    Fun = fun({Module, Key, Value}, {Acc, Errors}) ->
             case codd_typecast:typecast(Module, Key, Value) of
                 {ok, ValidValue} -> { [ValidValue | Acc], Errors};
-                {error, Error} ->  {Acc, [{ Key, Value, Error} | Errors]}
-            end;
-        ({Type, Value}, {Acc, Errors}) ->
-            case codd_typecast:typecast(Type, Value) of
-                {ok, ValidValue} -> { [ValidValue | Acc], Errors};
-                {error, Error} ->  {Acc, [{ Type, Value, Error} | Errors]}
+                {error, Error} ->  {Acc, [Error | Errors]}
             end
     end,
     case lists:foldl(Fun, {[], []}, Args) of
@@ -195,7 +189,7 @@ typecast_args(Module, Args) ->
     Fun = fun (Key, Value, {Acc, Errors}) ->
         case codd_typecast:typecast(Module, Key, Value) of
             {ok, ValidValue} -> { [ValidValue | Acc], Errors};
-            {error, Error} ->  {Acc, [{ Key, Value, Error} | Errors]}
+            {error, Error} ->  {Acc, [Error | Errors]}
         end
     end,
     case maps:fold(Fun, {[], []}, Args) of
