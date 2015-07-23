@@ -147,8 +147,11 @@ join_and_with_count(Count, FV) when is_map(FV) ->
 
 join_and_with_count(Count, FV) when is_list(FV) ->
     Fun = fun({Module, K,_}, {I, Acc}) ->
-        Table = Module:db_table(),
-        {I+1, <<Acc/binary, " AND ", (Table)/binary, ".", (atom_to_binary(K, latin1))/binary, " = $", (integer_to_binary(I))/binary>>}
+            Table = Module:db_table(),
+            {I+1, <<Acc/binary, " AND ", (Table)/binary, ".", (atom_to_binary(K, latin1))/binary, " = $", (integer_to_binary(I))/binary>>};
+        ({Module, K, Op, _}, {I, Acc}) when is_binary(Op) ->
+            Table = Module:db_table(),
+            {I+1, <<Acc/binary, " AND ", (Table)/binary, ".", (atom_to_binary(K, latin1))/binary, " ",Op/binary," $", (integer_to_binary(I))/binary>>}
     end,
     {NextCount, <<" AND ", TotalAcc/binary>>} = lists:foldl(Fun, {Count, <<"">>}, FV),
     {NextCount, TotalAcc}.
@@ -176,6 +179,11 @@ typecast_args(Args) ->
             case codd_typecast:typecast(Module, Key, Value) of
                 {ok, ValidValue} -> { [ValidValue | Acc], Errors};
                 {error, Error} ->  {Acc, [Error | Errors]}
+            end;
+        ({Module, Key, _, Value}, {Acc, Errors}) ->
+            case codd_typecast:typecast(Module, Key, Value) of
+                {ok, ValidValue} -> { [ValidValue | Acc], Errors};
+                {error, Error} ->  {Acc, [Error | Errors]}
             end
     end,
     case lists:foldl(Fun, {[], []}, Args) of
@@ -184,8 +192,9 @@ typecast_args(Args) ->
         {_, Errors} ->
             {error, Errors}
     end.
-
-typecast_args(Module, Args) ->
+typecast_args(_, Args) when is_list(Args)->
+    typecast_args(Args);
+typecast_args(Module, Args) when is_map(Args) ->
     Fun = fun (Key, Value, {Acc, Errors}) ->
         case codd_typecast:typecast(Module, Key, Value) of
             {ok, ValidValue} -> { [ValidValue | Acc], Errors};
@@ -198,3 +207,4 @@ typecast_args(Module, Args) ->
         {_, Errors} ->
             {error, Errors}
     end.
+

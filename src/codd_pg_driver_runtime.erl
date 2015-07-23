@@ -13,7 +13,7 @@
 
 %% API
 -export([db_equery/3, transaction/2]).
--export([equery/4, find/4, get/3, insert/2, update/2, delete/2]).
+-export([equery/4, find/4, get/3, insert/2, update/2, delete/2, count/3]).
 
 
 %% =============================================================================
@@ -140,6 +140,19 @@ delete(Interface, {Module, _, _Data} =Model) ->
         return(DeleteResult)
     ]).
 
+count(Interface, Module, IndexFV) ->
+    do([error_m ||
+        Table = Module:db_table(),
+        Where = codd_pg_driver_utils:where(IndexFV),
+        Args <- codd_pg_driver_utils:typecast_args(Module, IndexFV),
+        Sql =
+            <<"SELECT COUNT(*)",
+            " FROM ", Table/binary,
+            Where/binary, ";">>,
+        EqueryResult = db_equery(Interface, Sql, Args),
+        CountResult <- count_result(EqueryResult),
+        return(CountResult)
+    ]).
 
 get_result(Result, Module)->
     case Result of
@@ -189,6 +202,14 @@ delete_result(Result) ->
     case Result of
         {ok, _} ->
             ok;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+count_result(Result) ->
+    case Result of
+        {ok, _,[{Count}]} when is_integer(Count) ->
+            {ok, Count};
         {error, Reason} ->
             {error, Reason}
     end.

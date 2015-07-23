@@ -13,7 +13,7 @@
 -export([start/0, stop/0]).
 -export([start_pool/3]).
 -export([equery/3, equery/4, transaction/1]).
--export([find/3, find/4, get/2, get/3, insert/1, insert/2, update/1, update/2, delete/1, delete/2]).
+-export([find/3, find/4, get/2, get/3, insert/1, insert/2, update/1, update/2, delete/1, delete/2, count/2, count/3]).
 
 start() ->
     application:start(?MODULE).
@@ -72,3 +72,8 @@ delete(Model) ->
 delete(Interface, Model) ->
     codd_pg_driver_runtime:delete(Interface, Model).
 
+count(Module, IndexFV) ->
+    {ok, Pool} = application:get_env(codd_pg_driver, pool),
+    count(Pool, Module, IndexFV).
+count(Interface, Module, IndexFV) ->
+    codd_pg_driver_runtime:count(Interface, Module, IndexFV).
