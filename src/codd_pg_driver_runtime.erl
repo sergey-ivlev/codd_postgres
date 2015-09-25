@@ -106,25 +106,30 @@ insert(Interface, {Module, _, _Data} = Model) ->
     ]).
 
 update(Interface, {Module, _, _Data} = Model) ->
-    do([error_m ||
-        Table = Model:db_table(),
-        ChangeFields = codd_model:changed_fields(Model),
-        {NextCount, SetValues} <- codd_pg_driver_utils:set_values(ChangeFields),
-        PData <- codd_pg_driver_utils:primary_data(Model),
-        Where = codd_pg_driver_utils:where(NextCount, PData),
-        Args1 <- codd_pg_driver_utils:typecast_args(Module, ChangeFields),
-        Args2 <- codd_pg_driver_utils:typecast_args(Module, PData),
-        Args = Args1 ++ Args2,
-        RFields <- codd_pg_driver_utils:db_keys(Model),
-        Sql =
-            <<"UPDATE ", Table/binary,
-            " SET ", SetValues/binary,
-            Where/binary,
-            " RETURNING ", RFields/binary, ";">>,
-        EqueryResult = ?MODULE:db_equery(Interface, Sql, Args),
-        UpdateResult <- update_result(EqueryResult, Module),
-        return(UpdateResult)
-    ]).
+    ChangeFields = codd_model:changed_fields(Model),
+    case map_size(ChangeFields) > 0 of
+        true ->
+            do([error_m ||
+                Table = Model:db_table(),
+                {NextCount, SetValues} <- codd_pg_driver_utils:set_values(ChangeFields),
+                PData <- codd_pg_driver_utils:primary_data(Model),
+                Where = codd_pg_driver_utils:where(NextCount, PData),
+                Args1 <- codd_pg_driver_utils:typecast_args(Module, ChangeFields),
+                Args2 <- codd_pg_driver_utils:typecast_args(Module, PData),
+                Args = Args1 ++ Args2,
+                RFields <- codd_pg_driver_utils:db_keys(Model),
+                Sql =
+                    <<"UPDATE ", Table/binary,
+                    " SET ", SetValues/binary,
+                    Where/binary,
+                    " RETURNING ", RFields/binary, ";">>,
+                EqueryResult = ?MODULE:db_equery(Interface, Sql, Args),
+                UpdateResult <- update_result(EqueryResult, Module),
+                return(UpdateResult)
+            ]);
+        false ->
+            {ok, Model}
+    end.
 
 delete(Interface, {Module, _, _Data} =Model) ->
     do([error_m ||
