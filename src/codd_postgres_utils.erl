@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 08. Apr 2015 10:02 AM
 %%%-------------------------------------------------------------------
--module(codd_pg_driver_utils).
+-module(codd_postgres_utils).
 -author("isergey").
 
 

@@ -1,5 +1,5 @@
 
--module(codd_pg_driver_sup).
+-module(codd_postgres_sup).
 
 -behaviour(supervisor).
 

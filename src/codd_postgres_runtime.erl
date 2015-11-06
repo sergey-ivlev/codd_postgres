@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 30. Mar 2015 10:36 AM
 %%%-------------------------------------------------------------------
--module(codd_pg_driver_runtime).
+-module(codd_postgres_runtime).
 -author("isergey").
 
 -compile({parse_transform, do}).
@@ -26,13 +26,13 @@
 db_equery(PoolName, Sql, Args) when is_atom(PoolName) or is_binary(PoolName) ->
     equery_transaction(PoolName, Sql, Args);
 db_equery(Connection, Sql, Args) when is_pid(Connection) ->
-    codd_pg_driver_db_query:equery(Connection, Sql, Args).
+    codd_postgres_db_query:equery(Connection, Sql, Args).
 
 transaction(PoolName, Fun) ->
     poolboy:transaction(
         PoolName,
         fun(Worker) ->
-            codd_pg_driver_worker:transaction(
+            codd_postgres_worker:transaction(
                 Worker, Fun)
         end).
 
@@ -40,7 +40,7 @@ equery_transaction(PoolName, Sql, Args) ->
     poolboy:transaction(
         PoolName,
         fun(Worker) ->
-            codd_pg_driver_worker:equery(
+            codd_postgres_worker:equery(
                 Worker, Sql, Args)
         end).
 
@@ -48,7 +48,7 @@ equery_transaction(PoolName, Sql, Args) ->
 %% codd's request
 %% =============================================================================
 equery(Interface, Module, Sql, FV) ->
-    case codd_pg_driver_utils:typecast_args(FV) of
+    case codd_postgres_utils:typecast_args(FV) of
         {ok, TypecastArgs} ->
             Result = ?MODULE:db_equery(Interface, Sql, TypecastArgs),
             result(Result, Module);
@@ -59,10 +59,10 @@ equery(Interface, Module, Sql, FV) ->
 find(Interface, Module, IndexFV, Opts) ->
     do([error_m ||
         Table = Module:db_table(),
-        Fields <- codd_pg_driver_utils:db_keys(Module),
-        Where = codd_pg_driver_utils:where(IndexFV),
-        Args <- codd_pg_driver_utils:typecast_args(IndexFV),
-        BinOpts <- codd_pg_driver_utils:opts(Opts),
+        Fields <- codd_postgres_utils:db_keys(Module),
+        Where = codd_postgres_utils:where(IndexFV),
+        Args <- codd_postgres_utils:typecast_args(IndexFV),
+        BinOpts <- codd_postgres_utils:opts(Opts),
         Sql =
             <<"SELECT ", Fields/binary,
             " FROM ", Table/binary,
@@ -76,9 +76,9 @@ find(Interface, Module, IndexFV, Opts) ->
 get(Interface, Module, IndexFV) ->
     do([error_m ||
         Table = Module:db_table(),
-        Fields <- codd_pg_driver_utils:db_keys(Module),
-        Where = codd_pg_driver_utils:where(IndexFV),
-        Args <- codd_pg_driver_utils:typecast_args(Module, IndexFV),
+        Fields <- codd_postgres_utils:db_keys(Module),
+        Where = codd_postgres_utils:where(IndexFV),
+        Args <- codd_postgres_utils:typecast_args(Module, IndexFV),
         Sql =
             <<"SELECT ", Fields/binary,
             " FROM ", Table/binary,
@@ -91,10 +91,10 @@ get(Interface, Module, IndexFV) ->
 insert(Interface, {Module, _, _Data} = Model) ->
     do([error_m ||
         Table = Model:db_table(),
-        InsertData <- codd_pg_driver_utils:insert_data(Model),
-        Args <- codd_pg_driver_utils:typecast_args(Module, InsertData),
-        {Keys, Iterations} = codd_pg_driver_utils:insert_args(InsertData),
-        RFields <-  codd_pg_driver_utils:db_keys(Model),
+        InsertData <- codd_postgres_utils:insert_data(Model),
+        Args <- codd_postgres_utils:typecast_args(Module, InsertData),
+        {Keys, Iterations} = codd_postgres_utils:insert_args(InsertData),
+        RFields <-  codd_postgres_utils:db_keys(Model),
         Sql =
             <<"INSERT INTO ", Table/binary,
             " ( ", Keys/binary, " ) ",
@@ -111,13 +111,13 @@ update(Interface, {Module, _, _Data} = Model) ->
         true ->
             do([error_m ||
                 Table = Model:db_table(),
-                {NextCount, SetValues} <- codd_pg_driver_utils:set_values(ChangeFields),
-                PData <- codd_pg_driver_utils:primary_data(Model),
-                Where = codd_pg_driver_utils:where(NextCount, PData),
-                Args1 <- codd_pg_driver_utils:typecast_args(Module, ChangeFields),
-                Args2 <- codd_pg_driver_utils:typecast_args(Module, PData),
+                {NextCount, SetValues} <- codd_postgres_utils:set_values(ChangeFields),
+                PData <- codd_postgres_utils:primary_data(Model),
+                Where = codd_postgres_utils:where(NextCount, PData),
+                Args1 <- codd_postgres_utils:typecast_args(Module, ChangeFields),
+                Args2 <- codd_postgres_utils:typecast_args(Module, PData),
                 Args = Args1 ++ Args2,
-                RFields <- codd_pg_driver_utils:db_keys(Model),
+                RFields <- codd_postgres_utils:db_keys(Model),
                 Sql =
                     <<"UPDATE ", Table/binary,
                     " SET ", SetValues/binary,
@@ -134,9 +134,9 @@ update(Interface, {Module, _, _Data} = Model) ->
 delete(Interface, {Module, _, _Data} =Model) ->
     do([error_m ||
         Table = Model:db_table(),
-        PData <- codd_pg_driver_utils:primary_data(Model),
-        Where = codd_pg_driver_utils:where(PData),
-        Args <- codd_pg_driver_utils:typecast_args(Module, PData),
+        PData <- codd_postgres_utils:primary_data(Model),
+        Where = codd_postgres_utils:where(PData),
+        Args <- codd_postgres_utils:typecast_args(Module, PData),
         Sql =
             <<"DELETE FROM ", Table/binary,
             Where/binary, ";">>,
@@ -148,8 +148,8 @@ delete(Interface, {Module, _, _Data} =Model) ->
 count(Interface, Module, IndexFV) ->
     do([error_m ||
         Table = Module:db_table(),
-        Where = codd_pg_driver_utils:where(IndexFV),
-        Args <- codd_pg_driver_utils:typecast_args(Module, IndexFV),
+        Where = codd_postgres_utils:where(IndexFV),
+        Args <- codd_postgres_utils:typecast_args(Module, IndexFV),
         Sql =
             <<"SELECT COUNT(*)",
             " FROM ", Table/binary,

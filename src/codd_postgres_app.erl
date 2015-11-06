@@ -1,4 +1,4 @@
--module(codd_pg_driver_app).
+-module(codd_postgres_app).
 
 -behaviour(application).
 
@@ -10,7 +10,7 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    codd_pg_driver_sup:start_link().
+    codd_postgres_sup:start_link().
 
 stop(_State) ->
     ok.

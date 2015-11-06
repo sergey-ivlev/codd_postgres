@@ -1,4 +1,4 @@
-{application, codd_pg_driver,
+{application, codd_postgres,
  [
   {description, "PostgreSQL driver for codd orm"},
   {vsn, "1"},
@@ -7,6 +7,6 @@
                   kernel,
                   stdlib
                  ]},
-  {mod, { codd_pg_driver_app, []}},
+  {mod, { codd_postgres_app, []}},
   {env, []}
  ]}.

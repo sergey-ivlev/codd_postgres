@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 19. Mar 2015 2:34 PM
 %%%-------------------------------------------------------------------
--module(codd_pg_driver).
+-module(codd_postgres).
 -author("isergey").
 
 %% API
@@ -25,55 +25,55 @@ start_pool(PoolName, SizeArgs, WorkerArgs) ->
     PoolArgs =
         [
             {name, {local, PoolName}},
-            {worker_module, codd_pg_driver_worker}
+            {worker_module, codd_postgres_worker}
             | SizeArgs
         ],
     Spec = poolboy:child_spec(PoolName, PoolArgs, WorkerArgs),
-    application:set_env(codd_pg_driver, pool, PoolName),
-    supervisor:start_child(codd_pg_driver_sup, Spec).
+    application:set_env(codd_postgres, pool, PoolName),
+    supervisor:start_child(codd_postgres_sup, Spec).
 
 equery(Module, Sql, Args) ->
-    {ok, Pool} = application:get_env(codd_pg_driver, pool),
-    codd_pg_driver_runtime:equery(Pool, Module, Sql, Args).
+    {ok, Pool} = application:get_env(codd_postgres, pool),
+    codd_postgres_runtime:equery(Pool, Module, Sql, Args).
 equery(Interface, Module, Sql, Args) ->
-    codd_pg_driver_runtime:equery(Interface, Module, Sql, Args).
+    codd_postgres_runtime:equery(Interface, Module, Sql, Args).
 
 transaction(Fun) ->
-    {ok, PoolName} = application:get_env(codd_pg_driver, pool),
-    codd_pg_driver_runtime:transaction(PoolName, Fun).
+    {ok, PoolName} = application:get_env(codd_postgres, pool),
+    codd_postgres_runtime:transaction(PoolName, Fun).
 
 get(Module, IndexFV) ->
-    {ok, Pool} = application:get_env(codd_pg_driver, pool),
+    {ok, Pool} = application:get_env(codd_postgres, pool),
     get(Pool, Module, IndexFV).
 get(Interface, Module, IndexFV) ->
-    codd_pg_driver_runtime:get(Interface, Module, IndexFV).
+    codd_postgres_runtime:get(Interface, Module, IndexFV).
 
 update(Model)  ->
-    {ok, Pool} = application:get_env(codd_pg_driver, pool),
+    {ok, Pool} = application:get_env(codd_postgres, pool),
     update(Pool, Model).
 update(Interface, Model) ->
-    codd_pg_driver_runtime:update(Interface, Model).
+    codd_postgres_runtime:update(Interface, Model).
 
 insert(Model) ->
-    {ok, Pool} = application:get_env(codd_pg_driver, pool),
+    {ok, Pool} = application:get_env(codd_postgres, pool),
     insert(Pool, Model).
 insert(Interface, Model) ->
-    codd_pg_driver_runtime:insert(Interface, Model).
+    codd_postgres_runtime:insert(Interface, Model).
 
 find(Module, IndexFV, Opts) ->
-    {ok, Pool} = application:get_env(codd_pg_driver, pool),
+    {ok, Pool} = application:get_env(codd_postgres, pool),
     find(Pool, Module, IndexFV, Opts).
 find(Interface, Module, IndexFV, Opts) ->
-    codd_pg_driver_runtime:find(Interface, Module, IndexFV, Opts).
+    codd_postgres_runtime:find(Interface, Module, IndexFV, Opts).
 
 delete(Model) ->
-    {ok, Pool} = application:get_env(codd_pg_driver, pool),
+    {ok, Pool} = application:get_env(codd_postgres, pool),
     delete(Pool, Model).
 delete(Interface, Model) ->
-    codd_pg_driver_runtime:delete(Interface, Model).
+    codd_postgres_runtime:delete(Interface, Model).
 
 count(Module, IndexFV) ->
-    {ok, Pool} = application:get_env(codd_pg_driver, pool),
+    {ok, Pool} = application:get_env(codd_postgres, pool),
     count(Pool, Module, IndexFV).
 count(Interface, Module, IndexFV) ->
-    codd_pg_driver_runtime:count(Interface, Module, IndexFV).
+    codd_postgres_runtime:count(Interface, Module, IndexFV).

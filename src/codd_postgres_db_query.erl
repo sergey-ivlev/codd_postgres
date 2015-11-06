@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 07. Apr 2015 9:29 AM
 %%%-------------------------------------------------------------------
--module(codd_pg_driver_db_query).
+-module(codd_postgres_db_query).
 -author("isergey").
 
 %% API
