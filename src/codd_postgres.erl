@@ -29,8 +29,9 @@ start_pool(PoolName, SizeArgs, WorkerArgs) ->
             | SizeArgs
         ],
     Spec = poolboy:child_spec(PoolName, PoolArgs, WorkerArgs),
-    application:set_env(codd_postgres, pool, PoolName),
-    supervisor:start_child(codd_postgres_sup, Spec).
+    ok = application:set_env(codd_postgres, pool, PoolName),
+    {ok, _} = supervisor:start_child(codd_postgres_sup, Spec),
+    ok.
 
 equery(Module, Sql, Args) ->
     {ok, Pool} = application:get_env(codd_postgres, pool),

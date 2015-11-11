@@ -1,6 +1,6 @@
 {application, codd_postgres,
  [
-  {description, "PostgreSQL driver for codd orm"},
+  {description, "PostgreSQL adapter for codd orm"},
   {vsn, "1"},
   {registered, []},
   {applications, [
