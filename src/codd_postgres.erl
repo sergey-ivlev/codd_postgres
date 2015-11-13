@@ -13,7 +13,7 @@
 -export([start/0, stop/0]).
 -export([start_pool/3]).
 -export([equery/3, equery/4, transaction/1]).
--export([find/3, find/4, get/2, get/3, insert/1, insert/2, update/1, update/2, delete/1, delete/2, count/2, count/3]).
+-export([find/3, find/4, get/3, get/4, insert/1, insert/2, update/1, update/2, delete/1, delete/2, count/2, count/3]).
 
 start() ->
     application:start(?MODULE).
@@ -43,11 +43,11 @@ transaction(Fun) ->
     {ok, PoolName} = application:get_env(codd_postgres, pool),
     codd_postgres_runtime:transaction(PoolName, Fun).
 
-get(Module, IndexFV) ->
+get(Module, IndexFV, Opts) ->
     {ok, Pool} = application:get_env(codd_postgres, pool),
-    get(Pool, Module, IndexFV).
-get(Interface, Module, IndexFV) ->
-    codd_postgres_runtime:get(Interface, Module, IndexFV).
+    get(Pool, Module, IndexFV, Opts).
+get(Interface, Module, IndexFV, Opts) ->
+    codd_postgres_runtime:get(Interface, Module, IndexFV, Opts).
 
 update(Model)  ->
     {ok, Pool} = application:get_env(codd_postgres, pool),

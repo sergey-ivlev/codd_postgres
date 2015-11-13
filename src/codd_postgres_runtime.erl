@@ -13,7 +13,7 @@
 
 %% API
 -export([db_equery/3, transaction/2]).
--export([equery/4, find/4, get/3, insert/2, update/2, delete/2, count/3]).
+-export([equery/4, find/4, get/4, insert/2, update/2, delete/2, count/3]).
 
 
 %% =============================================================================
@@ -69,11 +69,11 @@ find(Interface, Module, IndexFV, Opts) ->
             Where/binary,
             BinOpts/binary, ";">>,
         EqueryResult = db_equery(Interface, Sql, Args),
-        FindResult <- find_result(EqueryResult, Module),
+        FindResult <- find_result(EqueryResult, Module, Opts),
         return(FindResult)
     ]).
 
-get(Interface, Module, IndexFV) ->
+get(Interface, Module, IndexFV, Opts) ->
     do([error_m ||
         Table = Module:db_table(),
         Fields <- codd_postgres_utils:db_keys(Module),
@@ -84,7 +84,7 @@ get(Interface, Module, IndexFV) ->
             " FROM ", Table/binary,
             Where/binary, ";">>,
         EqueryResult = db_equery(Interface, Sql, Args),
-        GetResult <- get_result(EqueryResult, Module),
+        GetResult <- get_result(EqueryResult, Module, Opts),
         return(GetResult)
     ]).
 
@@ -159,25 +159,25 @@ count(Interface, Module, IndexFV) ->
         return(CountResult)
     ]).
 
-get_result(Result, Module)->
+get_result(Result, Module, Opts) ->
     case Result of
         {ok, []} ->
             {error, undefined};
         {ok, _, []} ->
             {error, undefined};
         {ok, Columns, Rows} ->
-            [Model] = to_model(Columns, Rows, Module),
+            [Model] = to_model(Columns, Rows, Module, Opts),
             {ok, Model};
         {error, Reason} ->
             {error, Reason}
     end.
 
-find_result(Result, Module)->
+find_result(Result, Module, Opts)->
     case Result of
         {ok, []} ->
             {error, undefined};
         {ok, Columns, Rows} ->
-            Model = to_model(Columns, Rows, Module),
+            Model = to_model(Columns, Rows, Module, Opts),
             {ok, Model};
         {error, Reason} ->
             {error, Reason}
@@ -219,14 +219,6 @@ count_result(Result) ->
             {error, Reason}
     end.
 
-to_model(Colums, Rows, Module) ->
-    [row_to_model(Colums, Row, Module) || Row <- Rows].
-
-row_to_model(Colums, Row, Module) ->
-    PL = lists:zipwith(fun({column,Key,_,_,_,_}, Data) -> {Key, Data} end, Colums, tuple_to_list(Row)),
-    {ok, Model} = Module:from_db(PL),
-    Model.
-
 result(Result, Module) ->
     case Result of
         {ok, Count} when is_integer(Count) ->
@@ -240,3 +232,32 @@ result(Result, Module) ->
         {error, Reason} ->
             {error, Reason}
     end.
+
+to_model(Colums, Rows, Module) ->
+    to_model(Colums, Rows, Module, #{}).
+to_model(Colums, Rows, Module, Opts) ->
+    Keys = colums_to_keys(Colums, Module),
+    [row_to_model(Keys, Row, Module, Opts) || Row <- Rows].
+
+colums_to_keys(Colums, Module) ->
+    F = fun({column,BinKey,_,_,_,_}) ->
+            Module:bin_to_key(BinKey)
+        end,
+    lists:map(F, Colums).
+
+row_to_model(Colums, Row, Module, Opts) ->
+    PL = lists:zipwith(fun(Key, Data) ->
+        case maps:find(check_data, Opts) of
+            {ok, true} ->
+                {ok, TypecastValue} = codd_typecast:typecast(Module, Key, round_datetime(Data)),
+                {Key, TypecastValue};
+            _ ->
+                {Key, round_datetime(Data)}
+        end
+    end, Colums, tuple_to_list(Row)),
+    {ok, Model} = Module:from_db(PL),
+    Model.
+
+round_datetime({{Y,M,D},{H,Min,S}}) ->
+    {{Y,M,D},{H,Min,round(S)}};
+round_datetime(Data) -> Data.

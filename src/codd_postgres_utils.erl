@@ -50,12 +50,7 @@ insert_data({Module, _Meta, Data}) ->
                     false -> {Acc, Errors}
                 end;
             _ ->
-                case codd_model:find_alias(Module, K, V) of
-                    {ok, {V1, _}} ->
-                        {maps:put(K, V1, Acc), Errors};
-                    {error, _} ->
-                        {Acc, [codd_error:alias_error(K) | Errors]}
-                end
+                {maps:put(K, V, Acc), Errors}
         end
     end,
     case maps:fold(Fun,{maps:new(), []},Data) of
@@ -207,21 +202,13 @@ join_comma_with_count(Count, FV) when is_list(FV) ->
 
 typecast_args(Args) ->
     Fun = fun({Module, Key, Value}, {Acc, Errors}) ->
-        case codd_model:find_alias(Module, Key, Value) of
-            {ok, {FindedValue, _}} ->
-                case codd_typecast:typecast(Module, Key, FindedValue) of
-                    {ok, ValidValue} -> { [ValidValue | Acc], Errors};
-                    {error, Error} ->  {Acc, [Error | Errors]}
-                end;
-            {error, Error} ->  {Acc, [Error | Errors]}
-        end;
+            case codd_typecast:typecast(Module, Key, Value) of
+                {ok, ValidValue} -> { [ValidValue | Acc], Errors};
+                {error, Error} ->  {Acc, [Error | Errors]}
+            end;
         ({Module, Key, _, Value}, {Acc, Errors}) ->
-            case codd_model:find_alias(Module, Key, Value) of
-                {ok, {FindedValue, _}} ->
-                    case codd_typecast:typecast(Module, Key, FindedValue) of
-                        {ok, ValidValue} -> { [ValidValue | Acc], Errors};
-                        {error, Error} ->  {Acc, [Error | Errors]}
-                    end;
+            case codd_typecast:typecast(Module, Key, Value) of
+                {ok, ValidValue} -> { [ValidValue | Acc], Errors};
                 {error, Error} ->  {Acc, [Error | Errors]}
             end
     end,
@@ -235,12 +222,8 @@ typecast_args(_, Args) when is_list(Args)->
     typecast_args(Args);
 typecast_args(Module, Args) when is_map(Args) ->
     Fun = fun (Key, Value, {Acc, Errors}) ->
-        case codd_model:find_alias(Module, Key, Value) of
-            {ok, {FindedValue, _}} ->
-                case codd_typecast:typecast(Module, Key, FindedValue) of
-                    {ok, ValidValue} -> { [ValidValue | Acc], Errors};
-                    {error, Error} ->  {Acc, [Error | Errors]}
-                end;
+        case codd_typecast:typecast(Module, Key, Value) of
+            {ok, ValidValue} -> { [ValidValue | Acc], Errors};
             {error, Error} ->  {Acc, [Error | Errors]}
         end
     end,

@@ -28,7 +28,13 @@ equery(Conn, Sql, Args) ->
     end.
 
 transaction(Conn, Fun) ->
-    pgsql:with_transaction(Conn, Fun).
+    case pgsql:with_transaction(Conn, Fun) of
+        {rollback, Reason} ->
+            io:format("ST: ~p~n",[erlang:get_stacktrace()]),
+            {rollback, Reason};
+        Result ->
+            Result
+    end.
 
 transform_error(_Sql, _Args, #error{code = <<"23505">>}) ->
     not_unique;
