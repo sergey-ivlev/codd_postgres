@@ -13,7 +13,7 @@
 
 %% API
 -export([db_equery/3, transaction/2]).
--export([equery/4, find/4, get/4, insert/2, update/2, delete/2, count/3]).
+-export([equery/4, find/3, get/3, insert/2, update/2, delete/2, count/3]).
 
 
 %% =============================================================================
@@ -23,10 +23,10 @@
 %% =============================================================================
 %% Common querys
 %% =============================================================================
-db_equery(PoolName, Sql, Args) when is_atom(PoolName) or is_binary(PoolName) ->
-    equery_transaction(PoolName, Sql, Args);
-db_equery(Connection, Sql, Args) when is_pid(Connection) ->
-    codd_postgres_db_query:equery(Connection, Sql, Args).
+db_equery(Sql, Args, #{connection := Connection}) ->
+    codd_postgres_db_query:equery(Sql, Args, Connection);
+db_equery(Sql, Args, #{pool := PoolName}) ->
+    equery_transaction(PoolName, Sql, Args).
 
 transaction(PoolName, Fun) ->
     poolboy:transaction(
@@ -47,16 +47,16 @@ equery_transaction(PoolName, Sql, Args) ->
 %% =============================================================================
 %% codd's request
 %% =============================================================================
-equery(Interface, Module, Sql, FV) ->
-    case codd_postgres_utils:typecast_args(FV) of
+equery(Module, Sql, Args, Opts) ->
+    case codd_postgres_utils:typecast_args(Args) of
         {ok, TypecastArgs} ->
-            Result = ?MODULE:db_equery(Interface, Sql, TypecastArgs),
-            result(Result, Module);
+            Result = ?MODULE:db_equery(Sql, TypecastArgs, Opts),
+            result(Module, Result);
         {error, Reason} ->
             {error, Reason}
     end.
 
-find(Interface, Module, IndexFV, Opts) ->
+find(Module, IndexFV, Opts) ->
     do([error_m ||
         Table = Module:db_table(),
         Fields <- codd_postgres_utils:db_keys(Module),
@@ -68,12 +68,12 @@ find(Interface, Module, IndexFV, Opts) ->
             " FROM ", Table/binary,
             Where/binary,
             BinOpts/binary, ";">>,
-        EqueryResult = db_equery(Interface, Sql, Args),
-        FindResult <- find_result(EqueryResult, Module, Opts),
+        EqueryResult = db_equery(Sql, Args, Opts),
+        FindResult <- find_result(Module, EqueryResult, Opts),
         return(FindResult)
     ]).
 
-get(Interface, Module, IndexFV, Opts) ->
+get(Module, IndexFV, Opts) ->
     do([error_m ||
         Table = Module:db_table(),
         Fields <- codd_postgres_utils:db_keys(Module),
@@ -83,12 +83,12 @@ get(Interface, Module, IndexFV, Opts) ->
             <<"SELECT ", Fields/binary,
             " FROM ", Table/binary,
             Where/binary, ";">>,
-        EqueryResult = db_equery(Interface, Sql, Args),
-        GetResult <- get_result(EqueryResult, Module, Opts),
+        EqueryResult = db_equery(Sql, Args, Opts),
+        GetResult <- get_result(Module, EqueryResult, Opts),
         return(GetResult)
     ]).
 
-insert(Interface, {Module, _, _Data} = Model) ->
+insert({Module, _, _Data} = Model, Opts) ->
     do([error_m ||
         Table = Model:db_table(),
         InsertData <- codd_postgres_utils:insert_data(Model),
@@ -100,12 +100,12 @@ insert(Interface, {Module, _, _Data} = Model) ->
             " ( ", Keys/binary, " ) ",
             " VALUES ( ", Iterations/binary, " )"
             " RETURNING ", RFields/binary,";">>,
-        EqueryResult = ?MODULE:db_equery(Interface, Sql, Args),
-        InsertResult <- insert_result(EqueryResult, Module),
+        EqueryResult = ?MODULE:db_equery(Sql, Args, Opts),
+        InsertResult <- insert_result(Module, EqueryResult),
         return(InsertResult)
     ]).
 
-update(Interface, {Module, _, _Data} = Model) ->
+update({Module, _, _Data} = Model, Opts) ->
     ChangeFields = codd_model:changed_fields(Model),
     case map_size(ChangeFields) > 0 of
         true ->
@@ -123,15 +123,15 @@ update(Interface, {Module, _, _Data} = Model) ->
                     " SET ", SetValues/binary,
                     Where/binary,
                     " RETURNING ", RFields/binary, ";">>,
-                EqueryResult = ?MODULE:db_equery(Interface, Sql, Args),
-                UpdateResult <- update_result(EqueryResult, Module),
+                EqueryResult = ?MODULE:db_equery(Sql, Args, Opts),
+                UpdateResult <- update_result(Module, EqueryResult),
                 return(UpdateResult)
             ]);
         false ->
             {ok, Model}
     end.
 
-delete(Interface, {Module, _, _Data} =Model) ->
+delete({Module, _, _Data} =Model, Opts) ->
     do([error_m ||
         Table = Model:db_table(),
         PData <- codd_postgres_utils:primary_data(Model),
@@ -140,12 +140,12 @@ delete(Interface, {Module, _, _Data} =Model) ->
         Sql =
             <<"DELETE FROM ", Table/binary,
             Where/binary, ";">>,
-        EqueryResult = db_equery(Interface, Sql, Args),
+        EqueryResult = db_equery(Sql, Args, Opts),
         DeleteResult <- delete_result(EqueryResult),
         return(DeleteResult)
     ]).
 
-count(Interface, Module, IndexFV) ->
+count(Module, IndexFV, Opts) ->
     do([error_m ||
         Table = Module:db_table(),
         Where = codd_postgres_utils:where(IndexFV),
@@ -154,48 +154,48 @@ count(Interface, Module, IndexFV) ->
             <<"SELECT COUNT(*)",
             " FROM ", Table/binary,
             Where/binary, ";">>,
-        EqueryResult = db_equery(Interface, Sql, Args),
+        EqueryResult = db_equery(Sql, Args, Opts),
         CountResult <- count_result(EqueryResult),
         return(CountResult)
     ]).
 
-get_result(Result, Module, Opts) ->
+get_result(Module, Result, Opts) ->
     case Result of
         {ok, []} ->
             {error, undefined};
         {ok, _, []} ->
             {error, undefined};
         {ok, Columns, Rows} ->
-            [Model] = to_model(Columns, Rows, Module, Opts),
+            [Model] = to_model(Module, Columns, Rows, Opts),
             {ok, Model};
         {error, Reason} ->
             {error, Reason}
     end.
 
-find_result(Result, Module, Opts)->
+find_result(Module, Result, Opts)->
     case Result of
         {ok, []} ->
             {error, undefined};
         {ok, Columns, Rows} ->
-            Model = to_model(Columns, Rows, Module, Opts),
+            Model = to_model(Module, Columns, Rows, Opts),
             {ok, Model};
         {error, Reason} ->
             {error, Reason}
     end.
 
-insert_result(Result, Module) ->
+insert_result(Module, Result) ->
     case Result of
         {ok, 1, Columns, Rows} ->
-            [Model] = to_model(Columns, Rows, Module),
+            [Model] = to_model(Module, Columns, Rows),
             {ok, Model};
         {error, Reason} ->
             {error, Reason}
     end.
 
-update_result(Result, Module) ->
+update_result(Module, Result) ->
     case Result of
         {ok, 1, Columns, Rows} ->
-            [Model] = to_model(Columns, Rows, Module),
+            [Model] = to_model(Module, Columns, Rows),
             {ok, Model};
         {ok, 0, []} ->
             {error, undefined};
@@ -219,33 +219,33 @@ count_result(Result) ->
             {error, Reason}
     end.
 
-result(Result, Module) ->
+result(Module, Result) ->
     case Result of
         {ok, Count} when is_integer(Count) ->
             {ok, Count};
         {ok, Columns, Rows} ->
-            Models = to_model(Columns, Rows, Module),
+            Models = to_model(Module, Columns, Rows),
             {ok, Models};
         {ok, _Count, Columns, Rows} ->
-            Models = to_model(Columns, Rows, Module),
+            Models = to_model(Module, Columns, Rows),
             {ok, Models};
         {error, Reason} ->
             {error, Reason}
     end.
 
-to_model(Colums, Rows, Module) ->
-    to_model(Colums, Rows, Module, #{}).
-to_model(Colums, Rows, Module, Opts) ->
-    Keys = colums_to_keys(Colums, Module),
-    [row_to_model(Keys, Row, Module, Opts) || Row <- Rows].
+to_model(Module, Colums, Rows) ->
+    to_model(Module, Colums, Rows, #{}).
+to_model(Module, Colums, Rows, Opts) ->
+    Keys = colums_to_keys(Module, Colums),
+    [row_to_model(Module, Keys, Row, Opts) || Row <- Rows].
 
-colums_to_keys(Colums, Module) ->
+colums_to_keys(Module, Colums) ->
     F = fun({column,BinKey,_,_,_,_}) ->
             Module:bin_to_key(BinKey)
         end,
     lists:map(F, Colums).
 
-row_to_model(Colums, Row, Module, Opts) ->
+row_to_model(Module, Colums, Row, Opts) ->
     PL = lists:zipwith(fun(Key, Data) ->
         case maps:find(check_data, Opts) of
             {ok, true} ->

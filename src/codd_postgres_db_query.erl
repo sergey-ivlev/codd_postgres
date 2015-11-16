@@ -14,7 +14,7 @@
 -export([transaction/2]).
 -include_lib("../../../deps/epgsql/include/pgsql.hrl").
 
-equery(Conn, Sql, Args) ->
+equery(Sql, Args, #{connection := Conn}) ->
     case pgsql:equery(Conn, Sql, Args) of
         {ok, Count} ->
             {ok, Count};
