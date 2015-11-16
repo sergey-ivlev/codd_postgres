@@ -23,8 +23,8 @@
 %% =============================================================================
 %% Common querys
 %% =============================================================================
-db_equery(Sql, Args, #{connection := Connection}) ->
-    codd_postgres_db_query:equery(Sql, Args, Connection);
+db_equery(Sql, Args, #{connection := _Connection} = Opts) ->
+    codd_postgres_db_query:equery(Sql, Args, Opts);
 db_equery(Sql, Args, #{pool := PoolName}) ->
     equery_transaction(PoolName, Sql, Args).
 

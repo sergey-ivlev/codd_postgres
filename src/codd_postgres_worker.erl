@@ -88,7 +88,7 @@ init(Opts) ->
     {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
     {stop, Reason :: term(), NewState :: #state{}}).
 handle_call({equery, Sql, Args}, _From, #state{conn=Conn} = State) ->
-    Resp = codd_postgres_db_query:equery(Conn, Sql, Args),
+    Resp = codd_postgres_db_query:equery(Sql, Args, #{connection => Conn}),
     {reply, Resp, State};
 
 handle_call({transaction, F},_From, #state{conn=Conn} = State) ->

@@ -11,7 +11,7 @@
 
 %% API
 -export([start/0, stop/0]).
--export([start_pool/3]).
+-export([start_pools/1]).
 -export([equery/3, equery/4, transaction/1]).
 -export([get/2, get/3, find/2, find/3]).
 -export([insert/1, insert/2, update/1, update/2]).
@@ -24,6 +24,14 @@ start() ->
 stop() ->
     application:stop(?MODULE).
 
+start_pools(Pools) ->
+    lists:foreach(
+        fun({PoolName, SizeArgs, WorkerArgs}) ->
+            ok = start_pool(PoolName, SizeArgs, WorkerArgs),
+            ok = application:set_env(codd_postgres, pool, PoolName)
+        end, Pools),
+    ok.
+
 start_pool(PoolName, SizeArgs, WorkerArgs) ->
     PoolArgs =
         [
@@ -32,7 +40,6 @@ start_pool(PoolName, SizeArgs, WorkerArgs) ->
             | SizeArgs
         ],
     Spec = poolboy:child_spec(PoolName, PoolArgs, WorkerArgs),
-    ok = application:set_env(codd_postgres, pool, PoolName),
     {ok, _} = supervisor:start_child(codd_postgres_sup, Spec),
     ok.
 
