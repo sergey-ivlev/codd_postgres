@@ -88,7 +88,7 @@ get(Module, IndexFV, Opts) ->
         return(GetResult)
     ]).
 
-insert({Module, _, _Data} = Model, Opts) ->
+insert({Module, _, _} = Model, Opts) ->
     do([error_m ||
         Table = Model:db_table(),
         InsertData <- codd_postgres_utils:insert_data(Model),
@@ -105,7 +105,7 @@ insert({Module, _, _Data} = Model, Opts) ->
         return(InsertResult)
     ]).
 
-update({Module, _, _Data} = Model, Opts) ->
+update({Module, _, _} = Model, Opts) ->
     ChangeFields = codd_model:changed_fields(Model),
     case map_size(ChangeFields) > 0 of
         true ->
@@ -131,7 +131,7 @@ update({Module, _, _Data} = Model, Opts) ->
             {ok, Model}
     end.
 
-delete({Module, _, _Data} =Model, Opts) ->
+delete({Module, _, _} = Model, Opts) ->
     do([error_m ||
         Table = Model:db_table(),
         PData <- codd_postgres_utils:primary_data(Model),
@@ -241,7 +241,7 @@ to_model(Module, Colums, Rows, Opts) ->
 
 colums_to_keys(Module, Colums) ->
     F = fun({column,BinKey,_,_,_,_}) ->
-            Module:bin_to_key(BinKey)
+            Module:ext_key(BinKey)
         end,
     lists:map(F, Colums).
 

@@ -17,7 +17,7 @@
 -export([where/1, where/2, set_values/1]).
 -export([opts/1]).
 
-primary_data({Module, _Meta, Data}) ->
+primary_data({Module, Data, _}) ->
     Fun = fun(K,V, {Acc, Errors}) ->
         case Module:is_primary(K) of
             true ->
@@ -41,7 +41,7 @@ primary_data({Module, _Meta, Data}) ->
             {error, Error}
     end.
 
-insert_data({Module, _Meta, Data}) ->
+insert_data({Module, Data, _}) ->
     Fun = fun(K,V, {Acc, Errors}) ->
         case V of
             undefined ->
