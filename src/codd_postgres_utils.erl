@@ -65,7 +65,7 @@ db_keys(Model) ->
         _ ->
             Table = Model:db_table(),
             <<$,, BinResult/binary>> =
-                << <<$,, Table/binary, ".\"", F/binary,"\" ">> || F <- Keys>>,
+                << <<$,, "\"", Table/binary, "\".\"", F/binary,"\" ">> || F <- Keys>>,
             {ok, BinResult}
     end.
 db_keys(Keys, Model) ->
@@ -75,7 +75,7 @@ db_keys(Keys, Model) ->
         _ ->
             Table = Model:db_table(),
             <<$,, BinResult/binary>> =
-                << <<$,, Table/binary, ".\"", F/binary,"\" ">> || F <- ModelKeys>>,
+                << <<$,, "\"", Table/binary, "\".\"", F/binary,"\" ">> || F <- ModelKeys>>,
             {ok, BinResult}
     end.
 
@@ -173,11 +173,11 @@ join_and_with_count(Count, FV) when is_map(FV) ->
 join_and_with_count(Count, FV) when is_list(FV) ->
     Fun = fun({Module, K,_}, {I, Acc}) ->
             Table = Module:db_table(),
-            {I+1, <<Acc/binary, " AND ", (Table)/binary, ".\"", (atom_to_binary(K, latin1))/binary, "\" = $", (integer_to_binary(I))/binary>>};
+            {I+1, <<Acc/binary, " AND \"", (Table)/binary, "\".\"", (atom_to_binary(K, latin1))/binary, "\" = $", (integer_to_binary(I))/binary>>};
         ({Module, K, Op, _}, {I, Acc}) ->
             Table = Module:db_table(),
             BinOpt = op_to_bin(Op),
-            {I+1, <<Acc/binary, " AND ", (Table)/binary, ".\"", (atom_to_binary(K, latin1))/binary, "\" ",BinOpt/binary," $", (integer_to_binary(I))/binary>>}
+            {I+1, <<Acc/binary, " AND \"", (Table)/binary, "\".\"", (atom_to_binary(K, latin1))/binary, "\" ",BinOpt/binary," $", (integer_to_binary(I))/binary>>}
     end,
     {NextCount, <<" AND ", TotalAcc/binary>>} = lists:foldl(Fun, {Count, <<"">>}, FV),
     {NextCount, TotalAcc}.
@@ -195,7 +195,7 @@ join_comma_with_count(Count, FV) when is_map(FV) ->
 join_comma_with_count(Count, FV) when is_list(FV) ->
     Fun = fun({Module, K,_}, {I, Acc}) ->
         Table = Module:db_table(),
-        {I+1, <<Acc/binary, " , ", (Table)/binary, ".\"", (atom_to_binary(K, latin1))/binary, "\" = $", (integer_to_binary(I))/binary>>}
+        {I+1, <<Acc/binary, " , \"", (Table)/binary, "\".\"", (atom_to_binary(K, latin1))/binary, "\" = $", (integer_to_binary(I))/binary>>}
     end,
     {NextCount, <<" , ", TotalAcc/binary>>} = lists:foldl(Fun, {Count, <<"">>}, FV),
     {NextCount, TotalAcc}.

@@ -65,7 +65,7 @@ find(Module, IndexFV, Opts) ->
         BinOpts <- codd_postgres_utils:opts(Opts),
         Sql =
             <<"SELECT ", Fields/binary,
-            " FROM ", Table/binary,
+            " FROM \"", Table/binary, "\"",
             Where/binary,
             BinOpts/binary, ";">>,
         EqueryResult = db_equery(Sql, Args, Opts),
@@ -81,7 +81,7 @@ get(Module, IndexFV, Opts) ->
         Args <- codd_postgres_utils:typecast_args(Module, IndexFV),
         Sql =
             <<"SELECT ", Fields/binary,
-            " FROM ", Table/binary,
+            " FROM \"", Table/binary, "\"",
             Where/binary, ";">>,
         EqueryResult = db_equery(Sql, Args, Opts),
         GetResult <- get_result(Module, EqueryResult, Opts),
@@ -96,7 +96,7 @@ insert({Module, _, _} = Model, Opts) ->
         {Keys, Iterations} = codd_postgres_utils:insert_args(InsertData),
         RFields <-  codd_postgres_utils:db_keys(Model),
         Sql =
-            <<"INSERT INTO ", Table/binary,
+            <<"INSERT INTO \"", Table/binary,"\"",
             " ( ", Keys/binary, " ) ",
             " VALUES ( ", Iterations/binary, " )"
             " RETURNING ", RFields/binary,";">>,
@@ -119,7 +119,7 @@ update({Module, _, _} = Model, Opts) ->
                 Args = Args1 ++ Args2,
                 RFields <- codd_postgres_utils:db_keys(Model),
                 Sql =
-                    <<"UPDATE ", Table/binary,
+                    <<"UPDATE \"", Table/binary,"\"",
                     " SET ", SetValues/binary,
                     Where/binary,
                     " RETURNING ", RFields/binary, ";">>,
@@ -138,7 +138,7 @@ delete({Module, _, _} = Model, Opts) ->
         Where = codd_postgres_utils:where(PData),
         Args <- codd_postgres_utils:typecast_args(Module, PData),
         Sql =
-            <<"DELETE FROM ", Table/binary,
+            <<"DELETE FROM \"", Table/binary,"\"",
             Where/binary, ";">>,
         EqueryResult = db_equery(Sql, Args, Opts),
         DeleteResult <- delete_result(EqueryResult),
@@ -152,7 +152,7 @@ count(Module, IndexFV, Opts) ->
         Args <- codd_postgres_utils:typecast_args(Module, IndexFV),
         Sql =
             <<"SELECT COUNT(*)",
-            " FROM ", Table/binary,
+            " FROM \"", Table/binary,"\"",
             Where/binary, ";">>,
         EqueryResult = db_equery(Sql, Args, Opts),
         CountResult <- count_result(EqueryResult),
