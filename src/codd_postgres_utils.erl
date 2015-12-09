@@ -8,7 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(codd_postgres_utils).
 -author("isergey").
-
+-compile({parse_transform, do}).
 
 %% API
 -export([typecast_args/1, typecast_args/2]).
@@ -80,56 +80,46 @@ db_keys(Keys, Model) ->
     end.
 
 opts(Opts) ->
-    LimitResult =
-        case maps:find(limit, Opts) of
-            {ok, Limit} ->
-                limit(Limit);
-            error ->
-                {ok, <<>>}
-        end,
-    case LimitResult of
-        {ok, LimitBinary} ->
-            OffsetResult =
-                case maps:find(offset, Opts) of
-                    {ok, Offset} ->
-                        offset(Offset);
-                    error ->
-                        {ok, <<>>}
-                end,
-            case OffsetResult of
-                {ok, OffsetBin} ->
-                    OrderByResult =
-                        case maps:find(order_by, Opts) of
-                            {ok, OrderBy} ->
-                                order_by(OrderBy);
-                            error ->
-                                {ok, <<>>}
-                        end,
-                    case OrderByResult of
-                        {ok, OrderByBin} ->
-                            {ok, <<OrderByBin/binary, LimitBinary/binary, OffsetBin/binary>>};
-                        Error ->
-                            Error
-                    end;
-                Error ->
-                    Error
-            end;
-        Error ->
-            Error
+    do([error_m ||
+        Limit <- limit(Opts),
+        Offset <- offset(Opts),
+        Order <- order_by(Opts),
+        return(<<Order/binary, Limit/binary, Offset/binary>>)
+    ]).
+
+limit(Opts) ->
+    case maps:find(limit, Opts) of
+        {ok, Limit} when is_integer(Limit) ->
+            {ok, <<" LIMIT ",(integer_to_binary(Limit))/binary>>};
+        error ->
+            {ok, <<>>};
+        {ok, _} ->
+            {error, codd_error:unvalid_error(limit)}
     end.
 
-limit(N) when is_integer(N) ->
-    {ok, <<" LIMIT ",(integer_to_binary(N))/binary>>};
-limit(_) ->
-    {error, codd_error:unvalid_error(limit)}.
-offset(N) when is_integer(N) ->
-    {ok, <<" OFFSET ",(integer_to_binary(N))/binary>>};
-offset(_) ->
-    {error, codd_error:unvalid_error(offset)}.
-order_by({Field, desc}) ->
-    {ok, <<" ORDER BY \"",((atom_to_binary(Field, latin1)))/binary, "\" DESC ">>};
-order_by(_) ->
-    {error, codd_error:unvalid_error(order_by)}.
+offset(Opts) ->
+    case maps:find(offset, Opts) of
+        {ok, Offset} when is_integer(Offset) ->
+            {ok, <<" OFFSET ",(integer_to_binary(Offset))/binary>>};
+        error ->
+            {ok, <<>>};
+        {ok, _} ->
+            {error, codd_error:unvalid_error(offset)}
+    end.
+
+order_by(Opts) ->
+    case maps:find(order_by, Opts) of
+        {ok, {Field, desc}} when is_atom(Field)->
+            {ok, <<" ORDER BY \"",((atom_to_binary(Field, latin1)))/binary, "\" DESC">>};
+        {ok, {Field, asc}} when is_atom(Field)->
+            {ok, <<" ORDER BY \"",((atom_to_binary(Field, latin1)))/binary, "\" ASC">>};
+        {ok, Field} when is_atom(Field)->
+            {ok, <<" ORDER BY \"",((atom_to_binary(Field, latin1)))/binary, "\" ASC">>};
+        error ->
+            {ok, <<>>};
+        {ok, _} ->
+            {error, codd_error:unvalid_error(order_by)}
+    end.
 
 where(Fields) ->
     where(1, Fields).
@@ -242,3 +232,27 @@ op_to_bin(Op) ->
         '>=' -> <<">=">>;
         '<=' -> <<"<=">>
     end.
+
+-include_lib("eunit/include/eunit.hrl").
+opts_test() ->
+    %% one option
+    ?assertEqual({ok, <<>>}, opts(#{})),
+    ?assertEqual({ok, <<" LIMIT 1">>}, opts(#{limit => 1})),
+    ?assertEqual({ok, <<" OFFSET 10">>}, opts(#{offset => 10})),
+    ?assertEqual({ok, <<" ORDER BY \"id\" ASC">>}, opts(#{order_by => id})),
+    ?assertEqual({ok, <<" ORDER BY \"id\" ASC">>}, opts(#{order_by => {id, asc}})),
+    ?assertEqual({ok, <<" ORDER BY \"id\" DESC">>}, opts(#{order_by => {id, desc}})),
+    %% pair
+    ?assertEqual({ok, <<" LIMIT 1 OFFSET 10">>}, opts(#{limit => 1, offset => 10})),
+
+    ?assertEqual({ok, <<" ORDER BY \"id\" ASC LIMIT 1">>}, opts(#{limit => 1, order_by => id})),
+    ?assertEqual({ok, <<" ORDER BY \"id\" ASC LIMIT 1">>}, opts(#{limit => 1, order_by => {id, asc}})),
+    ?assertEqual({ok, <<" ORDER BY \"id\" DESC LIMIT 1">>}, opts(#{limit => 1, order_by => {id, desc}})),
+
+    ?assertEqual({ok, <<" ORDER BY \"id\" ASC OFFSET 10">>}, opts(#{offset => 10, order_by => id})),
+    ?assertEqual({ok, <<" ORDER BY \"id\" ASC OFFSET 10">>}, opts(#{offset => 10, order_by => {id, asc}})),
+    ?assertEqual({ok, <<" ORDER BY \"id\" DESC OFFSET 10">>}, opts(#{offset => 10, order_by => {id, desc}})),
+    %% limit, offset, order
+    ?assertEqual({ok, <<" ORDER BY \"id\" ASC LIMIT 1 OFFSET 10">>}, opts(#{limit => 1, offset => 10, order_by => id})),
+    ?assertEqual({ok, <<" ORDER BY \"id\" ASC LIMIT 1 OFFSET 10">>}, opts(#{limit => 1, offset => 10, order_by => {id, asc}})),
+    ?assertEqual({ok, <<" ORDER BY \"id\" DESC LIMIT 1 OFFSET 10">>}, opts(#{limit => 1, offset => 10, order_by => {id, desc}})).
