@@ -15,7 +15,7 @@
 -export([equery/3, equery/4, transaction/1]).
 -export([get/2, get/3, find/2, find/3]).
 -export([insert/1, insert/2, update/1, update/2]).
--export([delete/1, delete/2]).
+-export([delete/1, delete/2, delete/3]).
 -export([count/2, count/3]).
 
 start() ->
@@ -47,7 +47,7 @@ equery(Module, Sql, Args) ->
     equery(Module, Sql, Args, #{}).
 equery(Module, Sql, Args, #{connection := _Conn} = Opts) ->
     codd_postgres_runtime:equery(Module, Sql, Args, Opts);
-equery(Module, Sql, Args, #{pool := _Conn} = Opts) ->
+equery(Module, Sql, Args, #{pool := _Pool} = Opts) ->
     codd_postgres_runtime:equery(Module, Sql, Args, Opts);
 equery(Module, Sql, Args, Opts) ->
     {ok, Pool} = application:get_env(codd_postgres, pool),
@@ -73,7 +73,7 @@ find(Module, FindConditions) ->
     find(Module, FindConditions, #{}).
 find(Module, FindConditions, #{connection := _Conn} = Opts) ->
     codd_postgres_runtime:find(Module, FindConditions, Opts);
-find(Module, FindConditions, #{pool := _Conn} = Opts) ->
+find(Module, FindConditions, #{pool := _Pool} = Opts) ->
     codd_postgres_runtime:find(Module, FindConditions, Opts);
 find(Module, FindConditions, Opts) ->
     {ok, Pool} = application:get_env(codd_postgres, pool),
@@ -84,7 +84,7 @@ update(Model) ->
     update(Model, #{}).
 update(Model, #{connection := _Conn} = Opts) ->
     codd_postgres_runtime:update(Model, Opts);
-update(Model, #{pool := _Conn} = Opts) ->
+update(Model, #{pool := _Pool} = Opts) ->
     codd_postgres_runtime:update(Model, Opts);
 update(Model, Opts)  ->
     {ok, Pool} = application:get_env(codd_postgres, pool),
@@ -95,7 +95,7 @@ insert(Model) ->
     insert(Model, #{}).
 insert(Model, #{connection := _Conn} = Opts) ->
     codd_postgres_runtime:insert(Model, Opts);
-insert(Model, #{pool := _Conn} = Opts) ->
+insert(Model, #{pool := _Pool} = Opts) ->
     codd_postgres_runtime:insert(Model, Opts);
 insert(Model, Opts)  ->
     {ok, Pool} = application:get_env(codd_postgres, pool),
@@ -106,18 +106,29 @@ delete(Model) ->
     delete(Model, #{}).
 delete(Model, #{connection := _Conn} = Opts) ->
     codd_postgres_runtime:delete(Model, Opts);
-delete(Model, #{pool := _Conn} = Opts) ->
+delete(Model, #{pool := _Pool} = Opts) ->
     codd_postgres_runtime:delete(Model, Opts);
-delete(Model, Opts) ->
+delete({_,_,_} = Model, Opts) ->
     {ok, Pool} = application:get_env(codd_postgres, pool),
     Opts2 = maps:put(pool, Pool, Opts),
-    codd_postgres_runtime:delete(Model, Opts2).
+    codd_postgres_runtime:delete(Model, Opts2);
+
+delete(Module, Condition) ->
+    delete(Module, Condition, #{}).
+delete(Module, Condition, #{connection := _Conn} = Opts) ->
+    codd_postgres_runtime:delete(Module, Condition, Opts);
+delete(Module, Condition, #{pool := _Pool} = Opts) ->
+    codd_postgres_runtime:delete(Module, Condition, Opts);
+delete(Module, Condition, Opts) ->
+    {ok, Pool} = application:get_env(codd_postgres, pool),
+    Opts2 = maps:put(pool, Pool, Opts),
+    codd_postgres_runtime:delete(Module, Condition, Opts2).
 
 count(Module, CountConditions) ->
     count(Module, CountConditions, #{}).
 count(Module, CountConditions, #{connection := _Conn} = Opts) ->
     codd_postgres_runtime:count(Module, CountConditions, Opts);
-count(Module, CountConditions, #{pool := _Conn} = Opts) ->
+count(Module, CountConditions, #{pool := _Pool} = Opts) ->
     codd_postgres_runtime:count(Module, CountConditions, Opts);
 count(Module, CountConditions, Opts) ->
     {ok, Pool} = application:get_env(codd_postgres, pool),
