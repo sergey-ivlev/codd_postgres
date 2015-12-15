@@ -13,7 +13,7 @@
 
 %% API
 -export([db_equery/3, transaction/2]).
--export([equery/4, find/3, get/3, insert/2, update/2, delete/2, count/3]).
+-export([equery/4, find/3, get/3, insert/2, update/2, delete/2, delete/3, count/3]).
 
 
 %% =============================================================================
@@ -56,32 +56,36 @@ equery(Module, Sql, Args, Opts) ->
             {error, Reason}
     end.
 
-find(Module, IndexFV, Opts) ->
+find(Module, Condition, Opts) when is_map(Condition) ->
+    Condition2 = [{Module, K, V} || {K,V} <- maps:to_list(Condition)],
+    find(Module, Condition2, Opts);
+find(Module, Condition, Opts) ->
     do([error_m ||
-        Table = Module:db_table(),
+        Table = codd_postgres_utils:table(Module),
         Fields <- codd_postgres_utils:db_keys(Module),
-        Where = codd_postgres_utils:where(IndexFV),
-        Args <- codd_postgres_utils:typecast_args(IndexFV),
-        BinOpts <- codd_postgres_utils:opts(Opts),
+        {Where, Args} <- codd_postgres_utils:where(Condition, #{typecast => true}),
+        FindOpts <- codd_postgres_utils:opts(Opts),
         Sql =
             <<"SELECT ", Fields/binary,
-            " FROM \"", Table/binary, "\"",
+            " FROM ", Table/binary,
             Where/binary,
-            BinOpts/binary, ";">>,
+            FindOpts/binary, ";">>,
         EqueryResult = db_equery(Sql, Args, Opts),
         FindResult <- find_result(Module, EqueryResult, Opts),
         return(FindResult)
     ]).
 
-get(Module, IndexFV, Opts) ->
+get(Module, Condition, Opts) when is_map(Condition) ->
+    Condition2 = [{Module, K, V} || {K,V} <- maps:to_list(Condition)],
+    get(Module, Condition2, Opts);
+get(Module, Condition, Opts) ->
     do([error_m ||
-        Table = Module:db_table(),
+        Table = codd_postgres_utils:table(Module),
         Fields <- codd_postgres_utils:db_keys(Module),
-        Where = codd_postgres_utils:where(IndexFV),
-        Args <- codd_postgres_utils:typecast_args(Module, IndexFV),
+        {Where, Args} <- codd_postgres_utils:where(Condition, #{typecast => true}),
         Sql =
             <<"SELECT ", Fields/binary,
-            " FROM \"", Table/binary, "\"",
+            " FROM ", Table/binary,
             Where/binary, ";">>,
         EqueryResult = db_equery(Sql, Args, Opts),
         GetResult <- get_result(Module, EqueryResult, Opts),
@@ -90,13 +94,11 @@ get(Module, IndexFV, Opts) ->
 
 insert({Module, _, _} = Model, Opts) ->
     do([error_m ||
-        Table = Model:db_table(),
-        InsertData <- codd_postgres_utils:insert_data(Model),
-        Args <- codd_postgres_utils:typecast_args(Module, InsertData),
-        {Keys, Iterations} = codd_postgres_utils:insert_args(InsertData),
+        Table = codd_postgres_utils:table(Module),
+        {Keys, Iterations, Args} <- codd_postgres_utils:insert_set(Model),
         RFields <-  codd_postgres_utils:db_keys(Model),
         Sql =
-            <<"INSERT INTO \"", Table/binary,"\"",
+            <<"INSERT INTO ", Table/binary,
             " ( ", Keys/binary, " ) ",
             " VALUES ( ", Iterations/binary, " )"
             " RETURNING ", RFields/binary,";">>,
@@ -110,16 +112,14 @@ update({Module, _, _} = Model, Opts) ->
     case map_size(ChangeFields) > 0 of
         true ->
             do([error_m ||
-                Table = Model:db_table(),
-                {NextCount, SetValues} <- codd_postgres_utils:set_values(ChangeFields),
+                Table = codd_postgres_utils:table(Model),
+                {NextCount, SetValues, Args1} <- codd_postgres_utils:update_set(ChangeFields),
                 PData <- codd_postgres_utils:primary_data(Model),
-                Where = codd_postgres_utils:where(NextCount, PData),
-                Args1 <- codd_postgres_utils:typecast_args(Module, ChangeFields),
-                Args2 <- codd_postgres_utils:typecast_args(Module, PData),
+                {Where, Args2} <- codd_postgres_utils:where(PData, #{typecast => false, start_count => NextCount}),
                 Args = Args1 ++ Args2,
                 RFields <- codd_postgres_utils:db_keys(Model),
                 Sql =
-                    <<"UPDATE \"", Table/binary,"\"",
+                    <<"UPDATE ", Table/binary,
                     " SET ", SetValues/binary,
                     Where/binary,
                     " RETURNING ", RFields/binary, ";">>,
@@ -131,28 +131,37 @@ update({Module, _, _} = Model, Opts) ->
             {ok, Model}
     end.
 
-delete({Module, _, _} = Model, Opts) ->
+delete(Model, Opts) ->
     do([error_m ||
-        Table = Model:db_table(),
+        Table = codd_postgres_utils:table(Model),
         PData <- codd_postgres_utils:primary_data(Model),
-        Where = codd_postgres_utils:where(PData),
-        Args <- codd_postgres_utils:typecast_args(Module, PData),
+        {Where, Args} <- codd_postgres_utils:where(PData, #{typecast => false}),
         Sql =
-            <<"DELETE FROM \"", Table/binary,"\"",
+            <<"DELETE FROM ", Table/binary,
+            Where/binary, ";">>,
+        EqueryResult = db_equery(Sql, Args, Opts),
+        DeleteResult <- delete_result(EqueryResult),
+        return(DeleteResult)
+    ]).
+delete(Module, Condtion, Opts) ->
+    do([error_m ||
+        Table = codd_postgres_utils:table(Module),
+        {Where, Args} <- codd_postgres_utils:where(Condtion, #{typecast => true}),
+        Sql =
+            <<"DELETE FROM ", Table/binary,
             Where/binary, ";">>,
         EqueryResult = db_equery(Sql, Args, Opts),
         DeleteResult <- delete_result(EqueryResult),
         return(DeleteResult)
     ]).
 
-count(Module, IndexFV, Opts) ->
+count(Module, Condition, Opts) ->
     do([error_m ||
-        Table = Module:db_table(),
-        Where = codd_postgres_utils:where(IndexFV),
-        Args <- codd_postgres_utils:typecast_args(Module, IndexFV),
+        Table = codd_postgres_utils:table(Module),
+        {Where, Args} <- codd_postgres_utils:where(Condition, #{typecast => true}),
         Sql =
             <<"SELECT COUNT(*)",
-            " FROM \"", Table/binary,"\"",
+            " FROM ", Table/binary,
             Where/binary, ";">>,
         EqueryResult = db_equery(Sql, Args, Opts),
         CountResult <- count_result(EqueryResult),

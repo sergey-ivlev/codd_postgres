@@ -11,11 +11,15 @@
 -compile({parse_transform, do}).
 
 %% API
--export([typecast_args/1, typecast_args/2]).
--export([primary_data/1, insert_data/1, insert_args/1, db_keys/1, db_keys/2]).
+-export([typecast_args/1]).
+-export([primary_data/1, insert_set/1, db_keys/1, db_keys/2]).
 -export([join_and_with_count/1, join_and_with_count/2]).
--export([where/1, where/2, set_values/1]).
+-export([where/1, where/2, update_set/1]).
 -export([opts/1]).
+-export([quoted/1, table/1]).
+-export([table/0, type/1]).
+
+-include_lib("eunit/include/eunit.hrl").
 
 primary_data({Module, Data, _}) ->
     Fun = fun(K,V, {Acc, Errors}) ->
@@ -23,26 +27,23 @@ primary_data({Module, Data, _}) ->
             true ->
                 case V of
                     undefined -> {Acc, [codd_error:required_error(K) | Errors]};
-                    _ -> {maps:put(K, V, Acc), Errors}
+                    _ -> {[{Module, K, V} | Acc], Errors}
                 end;
             false ->
                 {Acc, Errors}
         end
     end,
-    case maps:fold(Fun,{maps:new(), []},Data) of
+    case maps:fold(Fun,{[], []},Data) of
+        {[], []} ->
+            {error, no_pkeys};
         {Acc, []} ->
-            case maps:size(Acc) =:= 0 of
-                true ->
-                    {error, no_pkeys};
-                false ->
-                    {ok, Acc}
-            end;
+            {ok, Acc};
         {_, Error} ->
             {error, Error}
     end.
 
-insert_data({Module, Data, _}) ->
-    Fun = fun(K,V, {Acc, Errors}) ->
+insert_set({Module, Data, _}) ->
+    Fun = fun(K,V, {{I, KeyAcc, IterationAcc, Args}=Acc, Errors}) ->
         case V of
             undefined ->
                 case Module:is_required(K) of
@@ -50,22 +51,47 @@ insert_data({Module, Data, _}) ->
                     false -> {Acc, Errors}
                 end;
             _ ->
-                {maps:put(K, V, Acc), Errors}
+                {{
+                    I+1,
+                    <<KeyAcc/binary, ", ", (quoted(K))/binary>>,
+                    <<IterationAcc/binary, ", $", (integer_to_binary(I))/binary>>,
+                    [V | Args]
+                }, Errors}
+
         end
     end,
-    case maps:fold(Fun,{maps:new(), []},Data) of
-        {Acc, []} -> {ok, Acc};
+    case maps:fold(Fun, {{1, <<"">>, <<"">>, []},[]}, Data) of
+        {Acc, []} ->
+            {_, <<", ", Keys/binary>>, <<", ", Iterations/binary>>, ReversedArgs} = Acc,
+            Args = lists:reverse(ReversedArgs),
+            {ok, {Keys, Iterations, Args}};
         {_, Error} -> {error, Error}
     end.
+
+update_set([]) ->
+    {error, nothing_changed};
+update_set(Map) when is_map(Map) andalso map_size(Map) =:= 0 ->
+    {error, nothing_changed};
+update_set(Fields) ->
+    Fun = fun(K,V, {I, Acc, Args}) ->
+        {
+            I + 1,
+            <<Acc/binary, " , ", (quoted(K))/binary, " = $", (integer_to_binary(I+1))/binary>>,
+            [V | Args]
+        }
+    end,
+    {LastCount, <<" , ", ResultAcc/binary>>, ReversedArgs} = maps:fold(Fun, {0, <<"">>, []}, Fields),
+    ResultArgs = lists:reverse(ReversedArgs),
+    {ok, {LastCount, ResultAcc, ResultArgs}}.
 
 db_keys(Model) ->
     Keys = codd_model:db_keys(Model),
     case Keys of
         [] -> {error, no_db_keys};
         _ ->
-            Table = Model:db_table(),
+            Table = Model:table(),
             <<$,, BinResult/binary>> =
-                << <<$,, "\"", Table/binary, "\".\"", F/binary,"\" ">> || F <- Keys>>,
+                << <<$,, (quoted(Table))/binary, ".", (quoted(F))/binary," ">> || F <- Keys>>,
             {ok, BinResult}
     end.
 db_keys(Keys, Model) ->
@@ -73,12 +99,49 @@ db_keys(Keys, Model) ->
     case ModelKeys of
         [] -> {error, no_db_keys};
         _ ->
-            Table = Model:db_table(),
+            Table = Model:table(),
             <<$,, BinResult/binary>> =
-                << <<$,, "\"", Table/binary, "\".\"", F/binary,"\" ">> || F <- ModelKeys>>,
+                << <<$,, (quoted(Table))/binary, ".", (quoted(F))/binary," ">> || F <- Keys>>,
             {ok, BinResult}
     end.
 
+join_and_with_count(FV) ->
+    join_and_with_count(1, FV).
+
+join_and_with_count(Count, FV) when is_map(FV) ->
+    Fun = fun(K,_, {I, Acc}) ->
+        {I+1, <<Acc/binary, " AND \"", (atom_to_binary(K, latin1))/binary, "\" = $", (integer_to_binary(I))/binary>>}
+    end,
+    {NextCount, <<" AND ", TotalAcc/binary>>} = maps:fold(Fun, {Count, <<"">>}, FV),
+    {NextCount, TotalAcc};
+
+join_and_with_count(Count, FV) when is_list(FV) ->
+    Fun = fun({Module, K,_}, {I, Acc}) ->
+            Table = Module:table(),
+            {I+1, <<Acc/binary, " AND \"", (Table)/binary, "\".\"", (atom_to_binary(K, latin1))/binary, "\" = $", (integer_to_binary(I))/binary>>};
+        ({Module, K, Op, _}, {I, Acc}) ->
+            Table = Module:table(),
+            BinOpt = op_to_bin(Op),
+            {I+1, <<Acc/binary, " AND \"", (Table)/binary, "\".\"", (atom_to_binary(K, latin1))/binary, "\" ",BinOpt/binary," $", (integer_to_binary(I))/binary>>}
+    end,
+    {NextCount, <<" AND ", TotalAcc/binary>>} = lists:foldl(Fun, {Count, <<"">>}, FV),
+    {NextCount, TotalAcc}.
+
+table({Module,_,_}) ->
+    quoted(Module:table());
+table(Module) ->
+    quoted(Module:table()).
+
+quoted(Bin) when is_binary(Bin) ->
+    <<"\"",Bin/binary,"\"">>;
+quoted(Atom) when is_atom(Atom) ->
+    quoted(atom_to_binary(Atom, latin1)).
+
+quoted_test() ->
+    ?assertEqual(<<"\"binary\"">>, quoted(<<"binary">>)),
+    ?assertEqual(<<"\"atom\"">>, quoted(atom)).
+
+%%========select option===========
 opts(Opts) ->
     do([error_m ||
         Limit <- limit(Opts),
@@ -121,119 +184,7 @@ order_by(Opts) ->
             {error, codd_error:unvalid_error(order_by)}
     end.
 
-where(Fields) ->
-    where(1, Fields).
-where(_, []) ->
-    <<>>;
-where(_, Map) when is_map(Map) andalso map_size(Map) =:= 0 ->
-    <<>>;
-where(Count, IndexFV) ->
-    {_, Data} = join_and_with_count(Count, IndexFV),
-    <<" WHERE ", Data/binary>>.
 
-
-insert_args(Fields) ->
-    Fun = fun(K,_, {I, KeyAcc, IterationAcc}) ->
-        {I+1,
-            <<KeyAcc/binary, ", \"", (atom_to_binary(K, latin1))/binary, "\"">>,
-            <<IterationAcc/binary, ", $", (integer_to_binary(I))/binary>>
-        }
-    end,
-    {_, <<", ", Keys/binary>>, <<", ", Iterations/binary>>} = maps:fold(Fun, {1, <<"">>, <<"">>}, Fields),
-    {Keys, Iterations}.
-
-set_values([]) ->
-    {error, nothing_changed};
-set_values(Map) when is_map(Map) andalso map_size(Map) =:= 0 ->
-    {error, nothing_changed};
-set_values(Fields) ->
-    Result = join_comma_with_count(Fields),
-    {ok, Result}.
-
-join_and_with_count(FV) ->
-    join_and_with_count(1, FV).
-
-join_and_with_count(Count, FV) when is_map(FV) ->
-    Fun = fun(K,_, {I, Acc}) ->
-        {I+1, <<Acc/binary, " AND \"", (atom_to_binary(K, latin1))/binary, "\" = $", (integer_to_binary(I))/binary>>}
-    end,
-    {NextCount, <<" AND ", TotalAcc/binary>>} = maps:fold(Fun, {Count, <<"">>}, FV),
-    {NextCount, TotalAcc};
-
-join_and_with_count(Count, FV) when is_list(FV) ->
-    Fun = fun({Module, K,_}, {I, Acc}) ->
-            Table = Module:db_table(),
-            {I+1, <<Acc/binary, " AND \"", (Table)/binary, "\".\"", (atom_to_binary(K, latin1))/binary, "\" = $", (integer_to_binary(I))/binary>>};
-        ({Module, K, Op, _}, {I, Acc}) ->
-            Table = Module:db_table(),
-            BinOpt = op_to_bin(Op),
-            {I+1, <<Acc/binary, " AND \"", (Table)/binary, "\".\"", (atom_to_binary(K, latin1))/binary, "\" ",BinOpt/binary," $", (integer_to_binary(I))/binary>>}
-    end,
-    {NextCount, <<" AND ", TotalAcc/binary>>} = lists:foldl(Fun, {Count, <<"">>}, FV),
-    {NextCount, TotalAcc}.
-
-join_comma_with_count(FV) ->
-    join_comma_with_count(1, FV).
-
-join_comma_with_count(Count, FV) when is_map(FV) ->
-    Fun = fun(K,_, {I, Acc}) ->
-        {I+1, <<Acc/binary, " , \"", (atom_to_binary(K, latin1))/binary, "\" = $", (integer_to_binary(I))/binary>>}
-    end,
-    {NextCount, <<" , ", TotalAcc/binary>>} = maps:fold(Fun, {Count, <<"">>}, FV),
-    {NextCount, TotalAcc};
-
-join_comma_with_count(Count, FV) when is_list(FV) ->
-    Fun = fun({Module, K,_}, {I, Acc}) ->
-        Table = Module:db_table(),
-        {I+1, <<Acc/binary, " , \"", (Table)/binary, "\".\"", (atom_to_binary(K, latin1))/binary, "\" = $", (integer_to_binary(I))/binary>>}
-    end,
-    {NextCount, <<" , ", TotalAcc/binary>>} = lists:foldl(Fun, {Count, <<"">>}, FV),
-    {NextCount, TotalAcc}.
-
-typecast_args(Args) ->
-    Fun = fun({Module, Key, Value}, {Acc, Errors}) ->
-            case codd_typecast:typecast(Module, Key, Value) of
-                {ok, ValidValue} -> { [ValidValue | Acc], Errors};
-                {error, Error} ->  {Acc, [Error | Errors]}
-            end;
-        ({Module, Key, _, Value}, {Acc, Errors}) ->
-            case codd_typecast:typecast(Module, Key, Value) of
-                {ok, ValidValue} -> { [ValidValue | Acc], Errors};
-                {error, Error} ->  {Acc, [Error | Errors]}
-            end
-    end,
-    case lists:foldl(Fun, {[], []}, Args) of
-        {Acc, []} ->
-            {ok, lists:reverse(Acc)};
-        {_, Errors} ->
-            {error, Errors}
-    end.
-typecast_args(_, Args) when is_list(Args)->
-    typecast_args(Args);
-typecast_args(Module, Args) when is_map(Args) ->
-    Fun = fun (Key, Value, {Acc, Errors}) ->
-        case codd_typecast:typecast(Module, Key, Value) of
-            {ok, ValidValue} -> { [ValidValue | Acc], Errors};
-            {error, Error} ->  {Acc, [Error | Errors]}
-        end
-    end,
-    case maps:fold(Fun, {[], []}, Args) of
-        {Acc, []} ->
-            {ok, lists:reverse(Acc)};
-        {_, Errors} ->
-            {error, Errors}
-    end.
-
-op_to_bin(Op) ->
-    case Op of
-        '=' -> <<"=">>;
-        '>' -> <<">">>;
-        '<' -> <<"<">>;
-        '>=' -> <<">=">>;
-        '<=' -> <<"<=">>
-    end.
-
--include_lib("eunit/include/eunit.hrl").
 opts_test() ->
     %% one option
     ?assertEqual({ok, <<>>}, opts(#{})),
@@ -256,3 +207,137 @@ opts_test() ->
     ?assertEqual({ok, <<" ORDER BY \"id\" ASC LIMIT 1 OFFSET 10">>}, opts(#{limit => 1, offset => 10, order_by => id})),
     ?assertEqual({ok, <<" ORDER BY \"id\" ASC LIMIT 1 OFFSET 10">>}, opts(#{limit => 1, offset => 10, order_by => {id, asc}})),
     ?assertEqual({ok, <<" ORDER BY \"id\" DESC LIMIT 1 OFFSET 10">>}, opts(#{limit => 1, offset => 10, order_by => {id, desc}})).
+
+%%======== WHERE condition ===========
+where(Condition) ->
+    where(Condition, #{typecast => true, start_count => 0}).
+where([], _) ->
+    {ok, {<<>>, []}};
+where(Condition, Opts) ->
+    case parse_condition(Condition, Opts) of
+        {ok, {Sql, Args}} ->
+            {ok, {<<" WHERE ", Sql/binary>>, Args}};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+parse_condition(Condition) ->
+    parse_condition(Condition, #{}).
+parse_condition(Condition, Opts) ->
+    Typecast = maps:get(typecast, Opts, true),
+    StartCount = maps:get(start_count, Opts, 0),
+    {Sql, Args, _} = parse_tree(Condition, [], StartCount),
+    RArgs = lists:reverse(Args),
+    case Typecast of
+        true ->
+            case typecast_args(RArgs) of
+                {ok, ValidArgs} ->
+                    {ok, {Sql, ValidArgs}};
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        false ->
+            L = [Value || {_,_,Value} <- RArgs],
+            {ok, {Sql, L}}
+    end.
+
+parse_tree({'or', []}, Args, StartCount) ->
+    {<<>>, Args, StartCount};
+parse_tree({'or', List}, Args, StartCount) when is_list(List) ->
+    Fun = fun(Condition, {BinAcc, ArgsAcc, Count}) ->
+        {SubBin, SubArgs, LastCount} = parse_tree(Condition, ArgsAcc, Count),
+        {<<BinAcc/binary, " OR ", SubBin/binary>>, SubArgs, LastCount}
+    end,
+    {<<" OR ", TotalAcc/binary>>, ResultArgs, ResultCount} = lists:foldl(Fun, {<<"">>, Args, StartCount}, List),
+    {<<"(", TotalAcc/binary,")">>, ResultArgs, ResultCount};
+
+parse_tree({'and', []}, Args, StartCount) ->
+    {<<>>, Args, StartCount};
+parse_tree({'and', List}, Args, StartCount) when is_list(List) ->
+    Fun = fun(Condition, {BinAcc, ArgsAcc, Count}) ->
+        {SubBin, SubArgs, LastCount} = parse_tree(Condition, ArgsAcc, Count),
+        {<<BinAcc/binary, " AND ", SubBin/binary>>, SubArgs, LastCount}
+    end,
+    {<<" AND ", TotalAcc/binary>>, ResultArgs, ResultCount} = lists:foldl(Fun, {<<"">>, Args, StartCount}, List),
+    {<<"(", TotalAcc/binary,")">>, ResultArgs, ResultCount};
+
+parse_tree(List, Args, StartCount) when is_list(List) ->
+    Fun = fun(Condition, {BinAcc, ArgsAcc, Count}) ->
+        {SubBin, SubArgs, LastCount} = parse_tree(Condition, ArgsAcc, Count),
+        {<<BinAcc/binary, " AND ", SubBin/binary>>, SubArgs, LastCount}
+    end,
+    {<<" AND ", TotalAcc/binary>>, ResultArgs, ResultCount} = lists:foldl(Fun, {<<"">>, Args, StartCount}, List),
+    {<<"(", TotalAcc/binary,")">>, ResultArgs, ResultCount};
+%%
+%% parse_tree({Key, Value}, Args, StartCount)->
+%%     BinKey = quoted(Key),
+%%     Count = StartCount + 1,
+%%     BinCount = integer_to_binary(Count),
+%%     {<<BinKey/binary," = $",BinCount/binary>>, [{Key, Value} | Args], Count};
+parse_tree({Module, Key, Value}, Args, StartCount)->
+    Table = quoted(Module:table()),
+    BinKey = quoted(Key),
+    Count = StartCount + 1,
+    BinCount = integer_to_binary(Count),
+    {<<Table/binary,".",BinKey/binary," = $",BinCount/binary>>, [{Module, Key, Value} | Args], Count};
+parse_tree({Module, Key, Op, Value}, Args, StartCount)->
+    Table = quoted(Module:table()),
+    BinKey = quoted(Key),
+    Count = StartCount + 1,
+    BinCount = integer_to_binary(Count),
+    BinOp = op_to_bin(Op),
+    {<<Table/binary,".",BinKey/binary," ", BinOp/binary," $",BinCount/binary>>, [{Module, Key, Value} | Args], Count}.
+
+typecast_args(Args) ->
+    Fun = fun
+        ({Module, Key, Value}, {Acc, Errors}) ->
+            case codd_typecast:typecast(Module, Key, Value) of
+                {ok, ValidValue} -> { [ValidValue | Acc], Errors};
+                {error, Error} ->  {Acc, [Error | Errors]}
+            end;
+        ({Module, Key, _, Value}, {Acc, Errors}) ->
+            case codd_typecast:typecast(Module, Key, Value) of
+                {ok, ValidValue} -> { [ValidValue | Acc], Errors};
+                {error, Error} ->  {Acc, [Error | Errors]}
+            end
+    end,
+    case lists:foldl(Fun, {[], []}, Args) of
+        {Acc, []} ->
+            {ok, lists:reverse(Acc)};
+        {_, Errors} ->
+            {error, Errors}
+    end.
+
+op_to_bin(Op) ->
+    case Op of
+        '=' -> <<"=">>;
+        '>' -> <<">">>;
+        '<' -> <<"<">>;
+        '>=' -> <<">=">>;
+        '<=' -> <<"<=">>;
+        '<>' -> <<"<>">>;
+        '!=' -> <<"!=">>
+    end.
+
+parse_condition_test() ->
+    ?assertEqual({ok, {<<"\"table\".\"key\" = $1">>, [1]}}, parse_condition({?MODULE, key, 1})),
+    ?assertEqual({ok, {<<>>, []}}, parse_condition({'or', []})),
+    ?assertEqual({ok, {<<>>, []}}, parse_condition({'and', []})),
+    ?assertEqual({ok, {<<"(\"table\".\"key1\" = $1 OR \"table\".\"key2\" = $2 OR \"table\".\"key3\" = $3)">>, [1,2,3]}},
+        parse_condition({'or', [{?MODULE, key1, 1},{?MODULE, key2, 2},{?MODULE, key3, 3}]})),
+    ?assertEqual({ok, {<<"(\"table\".\"key1\" = $1 AND \"table\".\"key2\" = $2 AND \"table\".\"key3\" = $3)">>, [1,2,3]}},
+        parse_condition({'and', [{?MODULE, key1, 1},{?MODULE, key2, 2},{?MODULE, key3, 3}]})),
+    ?assertEqual({ok, {<<"(\"table\".\"key1\" = $1 AND \"table\".\"key2\" = $2 AND \"table\".\"key3\" = $3)">>, [1,2,3]}},
+        parse_condition([{?MODULE, key1, 1},{?MODULE, key2, 2},{?MODULE, key3, 3}])),
+
+    ?assertEqual({ok, {<<"\"table\".\"key\" > $1">>, [1]}}, parse_condition({?MODULE, key, '>', 1})),
+    ?assertEqual({ok, {<<"\"table\".\"key\" >= $1">>, [1]}}, parse_condition({?MODULE, key, '>=', 1})),
+    ?assertEqual({ok, {<<"\"table\".\"key\" != $1">>, [1]}}, parse_condition({?MODULE, key, '!=', 1})),
+    ?assertEqual({ok, {<<"(\"table\".\"key1\" > $1 OR \"table\".\"key2\" < $2)">>, [1,2]}},
+        parse_condition({'or', [{?MODULE, key1, '>', 1},{?MODULE, key2, '<', 2}]})),
+    ?assertEqual({ok, {<<"(\"table\".\"key1\" = $1 AND \"table\".\"key2\" < $2)">>, [1,2]}},
+        parse_condition([{?MODULE, key1, 1},{?MODULE, key2, '<', 2}])).
+
+
+table() -> <<"table">>.
+type(_) -> integer.
