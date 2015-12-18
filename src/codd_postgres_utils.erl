@@ -336,7 +336,9 @@ parse_condition_test() ->
     ?assertEqual({ok, {<<"(\"table\".\"key1\" > $1 OR \"table\".\"key2\" < $2)">>, [1,2]}},
         parse_condition({'or', [{?MODULE, key1, '>', 1},{?MODULE, key2, '<', 2}]})),
     ?assertEqual({ok, {<<"(\"table\".\"key1\" = $1 AND \"table\".\"key2\" < $2)">>, [1,2]}},
-        parse_condition([{?MODULE, key1, 1},{?MODULE, key2, '<', 2}])).
+        parse_condition([{?MODULE, key1, 1},{?MODULE, key2, '<', 2}])),
+    ?assertEqual({ok, {<<"(\"table\".\"key1\" = $1 AND (\"table\".\"key2\" = $2 OR \"table\".\"key3\" < $3))">>, [0,1,2]}},
+        parse_condition({'and', [{?MODULE, key1, 0},{'or',[{?MODULE, key2, 1},{?MODULE, key3, '<', 2}]}]})).
 
 
 table() -> <<"table">>.

@@ -65,7 +65,7 @@ init(Opts) ->
     Database = proplists:get_value(database, Opts),
     Username = proplists:get_value(username, Opts),
     Password = proplists:get_value(password, Opts),
-    case pgsql:connect(Hostname, Username, Password, [{database, Database}]) of
+    case epgsql:connect(Hostname, Username, Password, [{database, Database}]) of
         {ok, Conn} ->
             {ok, #state{conn=Conn}};
         {error, Reason} ->

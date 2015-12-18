@@ -12,10 +12,10 @@
 %% API
 -export([equery/3]).
 -export([transaction/2]).
--include_lib("../../../deps/epgsql/include/pgsql.hrl").
+-include_lib("epgsql.hrl").
 
 equery(Sql, Args, #{connection := Conn}) ->
-    case pgsql:equery(Conn, Sql, Args) of
+    case epgsql:equery(Conn, Sql, Args) of
         {ok, Count} ->
             {ok, Count};
         {ok, Columns, Rows} ->
@@ -28,7 +28,7 @@ equery(Sql, Args, #{connection := Conn}) ->
     end.
 
 transaction(Conn, Fun) ->
-    case pgsql:with_transaction(Conn, Fun) of
+    case epgsql:with_transaction(Conn, Fun) of
         {rollback, Reason} ->
             io:format("ST: ~p~n",[erlang:get_stacktrace()]),
             {rollback, Reason};
