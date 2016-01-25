@@ -57,7 +57,7 @@ equery(Module, Sql, Args, Opts) ->
     end.
 
 find(Module, Condition, Opts) when is_map(Condition) ->
-    Condition2 = [{Module, K, V} || {K,V} <- maps:to_list(Condition)],
+    Condition2 = [extract_oparation(Module, K, V) || {K,V} <- maps:to_list(Condition)],
     find(Module, Condition2, Opts);
 find(Module, Condition, Opts) ->
     do([error_m ||
@@ -76,7 +76,7 @@ find(Module, Condition, Opts) ->
     ]).
 
 get(Module, Condition, Opts) when is_map(Condition) ->
-    Condition2 = [{Module, K, V} || {K,V} <- maps:to_list(Condition)],
+    Condition2 = [extract_oparation(Module, K, V) || {K,V} <- maps:to_list(Condition)],
     get(Module, Condition2, Opts);
 get(Module, Condition, Opts) ->
     do([error_m ||
@@ -270,3 +270,8 @@ row_to_model(Module, Colums, Row, Opts) ->
 round_datetime({{Y,M,D},{H,Min,S}}) ->
     {{Y,M,D},{H,Min,round(S)}};
 round_datetime(Data) -> Data.
+
+extract_oparation(Module, {Key, Op}, V) ->
+    {Module, Key, Op, V};
+extract_oparation(Module, Key, V) ->
+    {Module, Key, V}.
